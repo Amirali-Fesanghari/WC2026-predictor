@@ -196,7 +196,7 @@ class WCGoalModel:
         criterion = nn.HuberLoss(delta=1.0)
         optimizer = optim.Adam(self.net.parameters(), lr=lr, weight_decay=1e-4)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, patience=10, factor=0.5, verbose=False
+            optimizer, patience=10, factor=0.5
         )
 
         train_loader = DataLoader(

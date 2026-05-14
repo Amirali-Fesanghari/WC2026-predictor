@@ -1,0 +1,37 @@
+# ── Core data ──────────────────────────────────────────────
+pandas>=2.1.0
+numpy>=1.26.0
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# ── StatsBomb free data ─────────────────────────────────────
+statsbombpy>=1.1.0
+
+# ── ML core ─────────────────────────────────────────────────
+scikit-learn>=1.4.0
+xgboost>=2.0.0
+torch>=2.2.0          # neural net (CPU-only fine for now)
+shap>=0.44.0          # model explainability
+
+# ── NLP / psych module ──────────────────────────────────────
+transformers>=4.38.0  # HuggingFace sentiment (DistilBERT)
+spacy>=3.7.0          # named entity recognition
+newspaper3k>=0.2.8    # news article scraping
+feedparser>=6.0.10    # RSS feeds
+
+# ── Database ────────────────────────────────────────────────
+sqlalchemy>=2.0.0
+
+# ── Visualisation / dashboard ───────────────────────────────
+plotly>=5.18.0
+dash>=2.16.0
+streamlit>=1.31.0
+
+# ── Utilities ───────────────────────────────────────────────
+python-dotenv>=1.0.0
+tqdm>=4.66.0
+loguru>=0.7.0
+schedule>=1.2.0       # for the weekly auto-sync job
+pytest>=8.0.0
+jupyter>=1.0.0

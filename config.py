@@ -16,6 +16,11 @@ PROCESSED_DIR= DATA_DIR / "processed"
 CACHE_DIR    = DATA_DIR / "cache"
 DB_PATH      = DATA_DIR / "wc2026.db"
 
+NEWS_CACHE_DIR   = CACHE_DIR / "news"
+INJURY_CACHE_DIR = CACHE_DIR / "injuries"
+
+MODELS_DIR = ROOT / "src" / "models" / "saved"
+
 # ── API keys (set in .env, never hardcode) ───────────────────
 FOOTBALL_DATA_API_KEY = os.getenv("FOOTBALL_DATA_API_KEY", "")
 # Free key at: https://www.football-data.org/client/register
@@ -68,6 +73,22 @@ WC_2026_TEAMS = [
     "Switzerland", "Turkey",
 ]
 
+# ── WC 2026 group stage draw ─────────────────────────────────
+WC_2026_GROUPS = {
+    "A": ["United States", "Panama", "Algeria", "Uzbekistan"],
+    "B": ["Argentina", "Chile", "Morocco", "New Zealand"],
+    "C": ["Mexico", "Honduras", "Poland", "Tunisia"],
+    "D": ["France", "Uruguay", "Saudi Arabia", "South Africa"],
+    "E": ["Spain", "Costa Rica", "Japan", "DR Congo"],
+    "F": ["Brazil", "Canada", "Ecuador", "Ivory Coast"],
+    "G": ["Portugal", "Colombia", "Germany", "Senegal"],
+    "H": ["Netherlands", "Peru", "South Korea", "Egypt"],
+    "I": ["England", "Paraguay", "Iran", "Ghana"],
+    "J": ["Belgium", "Australia", "Croatia", "Bolivia"],
+    "K": ["Turkey", "Qatar", "Norway", "Cape Verde"],
+    "L": ["Switzerland", "Nigeria", "Iraq", "Curacao"],
+}
+
 # Name aliases: how different data sources refer to the same team
 TEAM_NAME_ALIASES = {
     "USA":                       "United States",
@@ -108,6 +129,26 @@ PSYCH_POSITIVE_KEYWORDS = [
     "confident", "fit", "recovered", "motivated", "united",
     "captain", "leader", "record", "milestone", "awarded",
 ]
+
+# ── Ensemble model weights (must sum to 1.0) ─────────────────
+ENSEMBLE_WEIGHTS = {
+    "xgboost":    0.40,
+    "neural_net": 0.30,
+    "poisson":    0.30,
+}
+
+# ── News RSS feed URLs ────────────────────────────────────────
+NEWS_RSS_FEEDS = {
+    "bbc_sport":  "https://feeds.bbci.co.uk/sport/football/rss.xml",
+    "espn_fc":    "https://www.espn.com/espn/rss/soccer/news",
+    "fifa":       "https://www.fifa.com/rss/news.xml",
+}
+
+# ── Simulation defaults ───────────────────────────────────────
+SIMULATION_N_DEFAULT = 100_000
+
+# ── Dashboard ────────────────────────────────────────────────
+DASHBOARD_PORT = 8501
 
 # ── Logging ──────────────────────────────────────────────────
 LOG_LEVEL = "DEBUG"

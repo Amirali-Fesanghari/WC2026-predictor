@@ -144,3 +144,97 @@ FOOTBALL_DATA_API_KEY=your_key_here   # optional, extends rate limits
 ```
 
 Get a free key at: https://www.football-data.org/client/register
+
+---
+
+## Day 4 — Advanced Models, Simulation & Dashboard
+
+### Added
+1. **Dixon-Coles Poisson model** (`src/models/poisson_model.py`) — predicts exact scorelines (0–0 through 5–5 probability matrix) using fitted attack/defence strength parameters per team
+2. **Monte Carlo tournament simulator** (`src/simulation/tournament_simulator.py`) — 100,000 full World Cup bracket simulations; outputs champion/finalist/semi-finalist probability for every team
+3. **NLP psych module** (`src/psych/news_scraper.py` + `src/psych/sentiment_analyzer.py`) — automated BBC/ESPN/FIFA RSS scraping with VADER sentence-level sentiment; produces a −1 to +1 psych score per team per match-week
+4. **Streamlit dashboard** (`dashboard/app.py`) — interactive dark-themed UI: Match Predictor, Tournament Simulator, and Team Intel tabs
+5. **Tactical classifier** (`src/tactics/tactical_classifier.py`) — formation matchup features + counter-tactic recommendations (e.g. 4-3-3 → counter with 5-3-2)
+6. **Ensemble predictor** (`src/models/ensemble.py`) — blends XGBoost 40% + Neural Network 30% + Dixon-Coles Poisson 30% into a single calibrated probability
+7. **Injury tracker** (`src/pipeline/injury_tracker.py`) — scrapes Transfermarkt for squad availability, computes injury-risk feature for the vector
+8. **CLI tool** (`cli.py`) — command-line interface for instant queries
+
+### How to run each new component
+
+```powershell
+# Install new dependencies (one-time)
+.\.venv\Scripts\Activate.ps1
+pip install vaderSentiment streamlit plotly rich feedparser
+
+# Poisson model — train and predict
+python -m src.models.poisson_model
+
+# Tournament simulation — 100k bracket simulations
+python -m src.simulation.tournament_simulator
+
+# NLP sentiment test
+python -m src.psych.sentiment_analyzer
+
+# Streamlit dashboard (opens in browser at http://localhost:8501)
+streamlit run dashboard/app.py
+
+# Ensemble prediction
+python src/models/ensemble.py --home France --away Brazil --stage semi-final
+
+# Full pipeline (all steps including new ones)
+python -m src.pipeline.build_pipeline
+
+# CLI quick commands
+python cli.py predict --home Germany --away Spain --stage group
+python cli.py simulate --n 10000
+python cli.py elo --team Argentina
+python cli.py psych --team France --days 7
+```
+
+### Updated project structure
+
+```
+wc2026_predictor/
+├── cli.py                              # NEW — command-line interface
+├── config.py                           # updated — groups, ensemble weights, RSS feeds
+├── requirements.txt                    # updated — vaderSentiment, streamlit, plotly, rich
+├── dashboard/
+│   └── app.py                          # NEW — Streamlit interactive UI
+└── src/
+    ├── models/
+    │   ├── xgboost_model.py            # existing
+    │   ├── neural_net.py               # existing
+    │   ├── poisson_model.py            # NEW — Dixon-Coles exact score model
+    │   └── ensemble.py                 # NEW — weighted blend of all 3 models
+    ├── pipeline/
+    │   ├── build_pipeline.py           # updated — 10-step orchestrator
+    │   ├── feature_engineer.py         # existing
+    │   ├── injury_tracker.py           # NEW — Transfermarkt squad availability
+    │   ├── fbref_scraper.py            # existing
+    │   ├── football_data_loader.py     # existing
+    │   └── statsbomb_loader.py         # existing
+    ├── psych/
+    │   ├── news_scraper.py             # NEW — BBC/ESPN/FIFA RSS scraper
+    │   └── sentiment_analyzer.py       # NEW — VADER + keyword NLP scorer
+    ├── simulation/
+    │   └── tournament_simulator.py     # NEW — Monte Carlo WC 2026 bracket
+    ├── tactics/
+    │   └── tactical_classifier.py      # NEW — formation matchup + counter-tactic
+    └── utils/
+        └── team_name_map.py            # existing
+```
+
+### Ensemble architecture
+
+```
+Feature vector (85 cols)
+        │
+        ├──► XGBoost classifier  ──── Win/Draw/Loss probs  ──► × 0.40 ──┐
+        │                                                                  │
+        ├──► Neural net          ──── xG home / xG away    ──► × 0.30 ──┼──► Weighted blend
+        │                              (→ Poisson → W/D/L)               │    → final probs
+        └──► Dixon-Coles Poisson ──── 6×6 score matrix     ──► × 0.30 ──┘
+                                       (→ sum → W/D/L)
+```
+
+Injury tracker and psych sentiment feed in as **pre-match feature adjustments** before the vector reaches the models — not as post-hoc corrections.

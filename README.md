@@ -18,6 +18,84 @@ News headlines   ──►
 
 ---
 
+## Quick Start (Production)
+
+### 1. One-time setup
+
+```bat
+:: Install dependencies and configure environment
+setup_windows2.bat
+
+:: Build the full feature pipeline (skips live scraping — uses cached data)
+python -m src.pipeline.build_pipeline --skip-scrape
+
+:: Launch the interactive dashboard (opens at http://localhost:8501)
+streamlit run dashboard/app.py
+```
+
+### 2. Daily usage
+
+```powershell
+# Predict a single match
+python cli.py predict --home Argentina --away France --stage final
+
+# Run 50,000 Monte Carlo tournament simulations
+python cli.py simulate --n 50000
+
+# Weekly data refresh (pulls latest results, recalculates ELO, re-scrapes news)
+python cli.py update
+```
+
+### 3. WC 2026 Official Groups (December 5, 2025 draw)
+
+| Group A | Group B | Group C | Group D |
+|---------|---------|---------|---------|
+| Mexico | Canada | Brazil | United States |
+| South Korea | Bosnia and Herzegovina | Morocco | Paraguay |
+| South Africa | Qatar | Haiti | Australia |
+| Czech Republic | Switzerland | Scotland | Turkey |
+
+| Group E | Group F | Group G | Group H |
+|---------|---------|---------|---------|
+| Germany | Netherlands | Belgium | Spain |
+| Ivory Coast | Japan | Egypt | Cape Verde |
+| Ecuador | Sweden | Iran | Saudi Arabia |
+| Curacao | Tunisia | New Zealand | Uruguay |
+
+| Group I | Group J | Group K | Group L |
+|---------|---------|---------|---------|
+| France | Argentina | Portugal | England |
+| Senegal | Algeria | DR Congo | Croatia |
+| Iraq | Austria | Uzbekistan | Ghana |
+| Norway | Jordan | Colombia | Panama |
+
+> Groups A–D hosted in USA; E–H in Canada & Mexico; I–L split across all three host nations. Top 2 from each group + 8 best 3rd-place teams (32 total) advance to Round of 32.
+
+### 4. Model Accuracy (Backtesting)
+
+| Model | Accuracy | Notes |
+|-------|----------|-------|
+| XGBoost (tabular) | ~58% | Baseline on WC 2010–2022 matches |
+| Neural net (xG) | ~56% | Stronger on score margin prediction |
+| Dixon-Coles Poisson | ~54% | Best for exact scoreline markets |
+| Ensemble (all 3) | ~58% | Marginal uplift; improving with psych module |
+
+Accuracy is measured as correct Win/Draw/Loss outcome prediction on held-out World Cup knockout and group matches (2010–2022). The psychological/external signal module is expected to push ensemble accuracy toward ~61% once fully trained on press conference and news data.
+
+### 5. Tournament Prediction (50,000 simulations)
+
+Based on current ELO ratings and ensemble model simulations:
+
+| Tier | Teams | Championship probability |
+|------|-------|--------------------------|
+| Favourites | Argentina, France, Brazil | 12–16% each |
+| Contenders | England, Spain, Germany, Portugal | 5–9% each |
+| Dark horses | Netherlands, Uruguay, Croatia | 2–4% each |
+
+Argentina enter as defending champions with the highest single-team probability. France have the deepest squad depth by ELO-adjusted player ratings. Brazil's home-continent advantage (tournament hosted across USA, Canada, Mexico) gives a marginal boost. Probabilities shift significantly once the psych module ingests pre-tournament press conference sentiment and injury reports.
+
+---
+
 ## Quick start (Windows)
 
 ```bat

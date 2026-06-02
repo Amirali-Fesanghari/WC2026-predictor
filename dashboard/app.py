@@ -65,6 +65,18 @@ st.markdown(
       h1, h2, h3 { color: #ffffff; }
       .stSelectbox label, .stSlider label { color: #cccccc; }
       .stDataFrame { background: var(--surface); }
+      .banner {
+        background: linear-gradient(90deg, #003300 0%, #005522 50%, #003300 100%);
+        border: 1px solid var(--accent);
+        border-radius: 8px;
+        padding: 10px 20px;
+        text-align: center;
+        margin-bottom: 16px;
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: var(--accent);
+        letter-spacing: 0.04em;
+      }
     </style>
     """,
     unsafe_allow_html=True,
@@ -103,6 +115,27 @@ try:
 except ImportError:
     _LOADER_OK = False
 
+# ── Model class import (real class name from xgboost_model.py) ─
+try:
+    from src.models.xgboost_model import WCOutcomeModel
+    _MODEL_CLASS_OK = True
+except ImportError:
+    _MODEL_CLASS_OK = False
+
+# ── FeatureEngineer import (for build_prediction_vector) ───────
+try:
+    from src.pipeline.feature_engineer import FeatureEngineer
+    _FE_OK = True
+except ImportError:
+    _FE_OK = False
+
+# ── TournamentSimulator import ─────────────────────────────────
+try:
+    from src.simulation.tournament_simulator import TournamentSimulator, DEFAULT_ELO
+    _SIM_OK = True
+except ImportError:
+    _SIM_OK = False
+
 # ── Plotly dark layout defaults ───────────────────────────────
 _LAYOUT = dict(
     template="plotly_dark",
@@ -121,14 +154,40 @@ TEAMS_SORTED = sorted(WC_2026_TEAMS) if WC_2026_TEAMS else ["(no teams)"]
 
 @st.cache_resource(show_spinner="Loading prediction model…")
 def load_model():
-    """Load saved XGBoost model; returns None if not yet trained."""
+    """
+    Load the most recently saved WCOutcomeModel.
+    Returns a WCOutcomeModel instance, or None if no saved model exists.
+
+    Uses @st.cache_resource so the model object is shared across sessions
+    and is not re-loaded on every Streamlit rerun.
+    """
+    if not _MODEL_CLASS_OK:
+        return None
     try:
-        import joblib
+        # WCOutcomeModel.save() writes to src/models/saved/xgboost_outcome_<ts>.joblib
         model_dir = Path(__file__).parents[1] / "src" / "models" / "saved"
-        candidates = sorted(model_dir.glob("wc_model_*.pkl"), reverse=True)
+        candidates = sorted(model_dir.glob("xgboost_outcome_*.joblib"), reverse=True)
         if not candidates:
             return None
-        return joblib.load(candidates[0])
+        return WCOutcomeModel.load(candidates[0])
+    except Exception:
+        return None
+
+
+@st.cache_resource(show_spinner="Loading FeatureEngineer…")
+def load_feature_engineer():
+    """
+    Load a FeatureEngineer with all data sources pre-loaded.
+    Returns None if the module is unavailable or data loading fails.
+
+    Uses @st.cache_resource so the heavy data load only happens once.
+    """
+    if not _FE_OK:
+        return None
+    try:
+        fe = FeatureEngineer()
+        fe.load_data()
+        return fe
     except Exception:
         return None
 
@@ -227,91 +286,6 @@ def elo_wdl(elo_home, elo_away):
 
 
 # ═══════════════════════════════════════════════════════════════
-#  TOURNAMENT SIMULATOR
-# ═══════════════════════════════════════════════════════════════
-
-def simulate_tournament(elo_ratings, n_sims=10_000):
-    """
-    Monte Carlo simulation of WC 2026 (48 teams).
-    Returns DataFrame with per-team stage probabilities.
-    """
-    teams = list(WC_2026_TEAMS)
-    if not teams:
-        return pd.DataFrame()
-
-    default_elo = 1500.0
-    ratings = {t: elo_ratings.get(t, default_elo) for t in teams}
-
-    counts = {t: {"champion": 0, "final": 0, "semi": 0, "quarter": 0,
-                  "r16": 0, "r32": 0, "group": 0} for t in teams}
-
-    def sim_knockout(t1, t2):
-        pa, _, pb = elo_wdl(ratings[t1], ratings[t2])
-        return t1 if random.random() < pa / (pa + pb) else t2
-
-    for _ in range(n_sims):
-        pool = teams[:]
-        random.shuffle(pool)
-
-        # Group stage: 16 groups of 3, top-2 advance
-        survivors = []
-        for g in range(16):
-            grp = pool[g * 3: g * 3 + 3]
-            pts = {t: 0 for t in grp}
-            for i in range(len(grp)):
-                for j in range(i + 1, len(grp)):
-                    pa, pd_, pb = elo_wdl(ratings[grp[i]], ratings[grp[j]])
-                    r = random.random()
-                    if r < pa:
-                        pts[grp[i]] += 3
-                    elif r < pa + pd_:
-                        pts[grp[i]] += 1
-                        pts[grp[j]] += 1
-                    else:
-                        pts[grp[j]] += 3
-            top2 = sorted(grp, key=lambda t: pts[t], reverse=True)[:2]
-            survivors.extend(top2)
-            for t in grp:
-                counts[t]["group"] += 1
-
-        def run_round(competitors, label):
-            winners = []
-            for k in range(0, len(competitors), 2):
-                if k + 1 >= len(competitors):
-                    winners.append(competitors[k])
-                    counts[competitors[k]][label] += 1
-                    continue
-                t1, t2 = competitors[k], competitors[k + 1]
-                counts[t1][label] += 1
-                counts[t2][label] += 1
-                winners.append(sim_knockout(t1, t2))
-            return winners
-
-        r32   = run_round(survivors, "r32")
-        r16   = run_round(r32,       "r16")
-        qf    = run_round(r16,       "quarter")
-        sf    = run_round(qf,        "semi")
-        final = run_round(sf,        "final")
-        if final:
-            counts[final[0]]["champion"] += 1
-
-    rows = []
-    for team in teams:
-        c = counts[team]
-        rows.append({
-            "Team":     team,
-            "Champion": c["champion"] / n_sims,
-            "Final":    c["final"]    / n_sims,
-            "Semi":     c["semi"]     / n_sims,
-            "Quarter":  c["quarter"]  / n_sims,
-            "R16":      c["r16"]      / n_sims,
-            "R32":      c["r32"]      / n_sims,
-        })
-
-    return pd.DataFrame(rows).sort_values("Champion", ascending=False).reset_index(drop=True)
-
-
-# ═══════════════════════════════════════════════════════════════
 #  SHAP FALLBACK FEATURE IMPORTANCE
 # ═══════════════════════════════════════════════════════════════
 
@@ -337,8 +311,14 @@ def build_shap_fallback(home_team, away_team, elo_ratings):
 
 
 # ═══════════════════════════════════════════════════════════════
-#  MAIN LAYOUT — 3 TABS
+#  MAIN LAYOUT
 # ═══════════════════════════════════════════════════════════════
+
+# ── Countdown banner ──────────────────────────────────────────
+st.markdown(
+    "<div class='banner'>⚽ WC 2026 is 11 days away!</div>",
+    unsafe_allow_html=True,
+)
 
 st.markdown(
     "<h1 style='text-align:center; color:#00ff87; margin-bottom:0;'>⚽ WC 2026 AI Predictor</h1>"
@@ -383,13 +363,17 @@ with tab1:
     if predict_clicked:
         with st.spinner("Running prediction…"):
             elo_ratings = get_elo_ratings()
-            model = load_model()
+            # Load model via WCOutcomeModel.load_latest() wrapper
+            # Returns WCOutcomeModel instance or None
+            model_obj = load_model()
 
             elo_h = elo_ratings.get(home_team, 1500.0)
             elo_a = elo_ratings.get(away_team, 1500.0)
 
-            if model is None:
-                # ELO-based fallback
+            used_model = False
+
+            if model_obj is None:
+                # ELO-only fallback — works even before training
                 p_win, p_draw, p_loss = elo_wdl(elo_h, elo_a)
                 source = "ELO fallback"
                 st.warning(
@@ -399,16 +383,37 @@ with tab1:
                 )
             else:
                 try:
-                    # Build a minimal feature vector; pipeline may enrich it
-                    feat = pd.DataFrame([{
-                        "home_elo":   elo_h,
-                        "away_elo":   elo_a,
-                        "elo_diff":   elo_h - elo_a,
-                        "stage":      stage,
-                    }])
-                    probs = model.predict_proba(feat)[0]
-                    p_win, p_draw, p_loss = probs[2], probs[1], probs[0]
+                    # Try to build a full feature vector via FeatureEngineer
+                    fe = load_feature_engineer()
+                    if fe is not None:
+                        # build_prediction_vector is the real method in feature_engineer.py
+                        feat = fe.build_prediction_vector(
+                            home_team=home_team,
+                            away_team=away_team,
+                            match_date=datetime(2026, 6, 11),
+                            stage=stage.lower().replace(" ", "_").replace("-", "_"),
+                        )
+                    else:
+                        # Minimal fallback vector — model.predict() will fill
+                        # missing columns with 0 via reindex
+                        feat = pd.DataFrame([{
+                            "home_elo":   elo_h,
+                            "away_elo":   elo_a,
+                            "elo_diff":   elo_h - elo_a,
+                            "stage_weight": 1.0,
+                        }])
+
+                    # WCOutcomeModel.predict() returns a dict with p_home_win / p_draw / p_away_win
+                    result = model_obj.predict(
+                        feature_vector=feat,
+                        home_team=home_team,
+                        away_team=away_team,
+                    )
+                    p_win  = result["p_home_win"]
+                    p_draw = result["p_draw"]
+                    p_loss = result["p_away_win"]
                     source = "XGBoost model"
+                    used_model = True
                 except Exception as exc:
                     st.warning(f"Model prediction failed ({exc}); using ELO fallback.", icon="⚠️")
                     p_win, p_draw, p_loss = elo_wdl(elo_h, elo_a)
@@ -419,6 +424,7 @@ with tab1:
                 "p_win": p_win, "p_draw": p_draw, "p_loss": p_loss,
                 "elo_h": elo_h, "elo_a": elo_a, "source": source,
                 "elo_ratings": elo_ratings,
+                "used_model": used_model,
             }
 
     pred = st.session_state.get("pred")
@@ -471,26 +477,38 @@ with tab1:
         st.markdown("### Top 10 Feature Importances (SHAP)")
         shap_df = build_shap_fallback(h, a, pred.get("elo_ratings", {}))
 
-        if model is not None:
-            try:
-                import shap
-                explainer = shap.TreeExplainer(model)
-                feat_vec = pd.DataFrame([{
-                    "home_elo": pred["elo_h"], "away_elo": pred["elo_a"],
-                    "elo_diff": pred["elo_h"] - pred["elo_a"], "stage": pred["stage"],
-                }])
-                sv = explainer.shap_values(feat_vec)
-                sv_arr = sv[2][0] if isinstance(sv, list) else sv[0]
-                shap_df = pd.DataFrame({
-                    "Feature":     list(feat_vec.columns),
-                    "Value":       list(feat_vec.iloc[0].values),
-                    "SHAP Impact": sv_arr,
-                })
-                shap_df = shap_df.reindex(
-                    shap_df["SHAP Impact"].abs().sort_values(ascending=False).index
-                ).head(10).reset_index(drop=True)
-            except Exception:
-                pass  # keep fallback
+        if pred.get("used_model"):
+            # Re-load the model object (cached, no cost) to run SHAP
+            model_obj = load_model()
+            if model_obj is not None:
+                try:
+                    import shap
+                    fe = load_feature_engineer()
+                    if fe is not None:
+                        feat_vec = fe.build_prediction_vector(
+                            home_team=h, away_team=a,
+                            match_date=datetime(2026, 6, 11),
+                            stage=pred["stage"].lower().replace(" ", "_").replace("-", "_"),
+                        )
+                    else:
+                        feat_vec = pd.DataFrame([{
+                            "home_elo": pred["elo_h"], "away_elo": pred["elo_a"],
+                            "elo_diff": pred["elo_h"] - pred["elo_a"], "stage_weight": 1.0,
+                        }])
+
+                    explanation = model_obj.explain_prediction(
+                        feature_vector=feat_vec,
+                        home_team=h,
+                        away_team=a,
+                        outcome_idx=2,
+                    )
+                    shap_df = pd.DataFrame({
+                        "Feature":     explanation["feature"].tolist(),
+                        "Value":       explanation["value"].tolist(),
+                        "SHAP Impact": explanation["shap"].tolist(),
+                    }).head(10).reset_index(drop=True)
+                except Exception:
+                    pass  # keep fallback
 
         st.dataframe(
             shap_df.head(10),
@@ -521,21 +539,132 @@ with tab1:
 
 # ───────────────────────────────────────────────────────────────
 #  TAB 2 — TOURNAMENT SIMULATOR
+#
+#  Uses TournamentSimulator from src.simulation.tournament_simulator
+#  which implements the correct WC 2026 format:
+#    12 groups of 4, top-2 + best 8 third-placed = 32 advance,
+#    then R32 -> R16 -> QF -> SF -> Final.
+#  Falls back to the inline ELO-only simulator if the module is missing.
 # ───────────────────────────────────────────────────────────────
+
+def _run_simulator(elo_ratings, n_sims=10_000):
+    """
+    Run the tournament simulation and return a DataFrame with columns:
+      Team, Champion, Final, Semi, Quarter, R16, R32
+    (values are fractions 0-1, sorted by Champion desc).
+    """
+    if _SIM_OK:
+        # Merge live ELO ratings with DEFAULT_ELO fallback
+        merged_elo = {**DEFAULT_ELO, **elo_ratings}
+        sim = TournamentSimulator(elo_ratings=merged_elo, seed=None)
+        sim.run(n_simulations=n_sims)
+        results = sim.get_results()
+        rows = []
+        for team, probs in results.items():
+            rows.append({
+                "Team":     team,
+                "Champion": probs["champion_prob"],
+                "Final":    probs["final_prob"],
+                "Semi":     probs["sf_prob"],
+                "Quarter":  probs["qf_prob"],
+                "R16":      probs["r16_prob"],
+                "R32":      probs["r32_prob"],
+            })
+        return pd.DataFrame(rows).sort_values("Champion", ascending=False).reset_index(drop=True)
+    else:
+        # Inline ELO-only fallback (48 teams, 16 groups of 3)
+        teams = list(WC_2026_TEAMS)
+        if not teams:
+            return pd.DataFrame()
+
+        default_elo = 1500.0
+        ratings = {t: elo_ratings.get(t, default_elo) for t in teams}
+
+        counts = {t: {"champion": 0, "final": 0, "semi": 0, "quarter": 0,
+                      "r16": 0, "r32": 0} for t in teams}
+
+        def sim_knockout(t1, t2):
+            pa, _, pb = elo_wdl(ratings[t1], ratings[t2])
+            return t1 if random.random() < pa / (pa + pb) else t2
+
+        for _ in range(n_sims):
+            pool = teams[:]
+            random.shuffle(pool)
+            survivors = []
+            for g in range(16):
+                grp = pool[g * 3: g * 3 + 3]
+                pts = {t: 0 for t in grp}
+                for i in range(len(grp)):
+                    for j in range(i + 1, len(grp)):
+                        pa, pd_, pb = elo_wdl(ratings[grp[i]], ratings[grp[j]])
+                        r = random.random()
+                        if r < pa:
+                            pts[grp[i]] += 3
+                        elif r < pa + pd_:
+                            pts[grp[i]] += 1
+                            pts[grp[j]] += 1
+                        else:
+                            pts[grp[j]] += 3
+                top2 = sorted(grp, key=lambda t: pts[t], reverse=True)[:2]
+                survivors.extend(top2)
+
+            def run_round(competitors, label):
+                winners = []
+                for k in range(0, len(competitors), 2):
+                    if k + 1 >= len(competitors):
+                        winners.append(competitors[k])
+                        counts[competitors[k]][label] += 1
+                        continue
+                    t1, t2 = competitors[k], competitors[k + 1]
+                    counts[t1][label] += 1
+                    counts[t2][label] += 1
+                    winners.append(sim_knockout(t1, t2))
+                return winners
+
+            r32   = run_round(survivors, "r32")
+            r16   = run_round(r32,       "r16")
+            qf    = run_round(r16,       "quarter")
+            sf    = run_round(qf,        "semi")
+            final = run_round(sf,        "final")
+            if final:
+                counts[final[0]]["champion"] += 1
+
+        rows = []
+        for team in teams:
+            c = counts[team]
+            rows.append({
+                "Team":     team,
+                "Champion": c["champion"] / n_sims,
+                "Final":    c["final"]    / n_sims,
+                "Semi":     c["semi"]     / n_sims,
+                "Quarter":  c["quarter"]  / n_sims,
+                "R16":      c["r16"]      / n_sims,
+                "R32":      c["r32"]      / n_sims,
+            })
+        return pd.DataFrame(rows).sort_values("Champion", ascending=False).reset_index(drop=True)
+
 
 with tab2:
     st.markdown("## Tournament Simulator")
-    st.markdown(
-        "<p style='color:#888;'>10,000 independent Monte Carlo tournaments using ELO win probabilities.</p>",
-        unsafe_allow_html=True,
-    )
+    if _SIM_OK:
+        st.markdown(
+            "<p style='color:#888;'>10,000 independent Monte Carlo tournaments using the real "
+            "WC 2026 format (12 groups of 4) with ELO win probabilities.</p>",
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            "<p style='color:#888;'>10,000 independent Monte Carlo tournaments using ELO win "
+            "probabilities (simplified 48-team format — install project modules for full bracket).</p>",
+            unsafe_allow_html=True,
+        )
 
     sim_btn = st.button("Run 10,000 Simulations", key="btn_sim")
 
     if sim_btn:
         with st.spinner("Simulating 10,000 tournaments…"):
             elo_ratings = get_elo_ratings()
-            sim_df = simulate_tournament(elo_ratings, n_sims=10_000)
+            sim_df = _run_simulator(elo_ratings, n_sims=10_000)
             st.session_state["sim_df"] = sim_df
 
     sim_df = st.session_state.get("sim_df")
@@ -566,8 +695,9 @@ with tab2:
         )
         st.plotly_chart(fig, use_container_width=True)
 
-        # Full table — all 48 teams
-        st.markdown("### All 48 Teams — Stage Probabilities")
+        # Full table
+        n_teams = len(sim_df)
+        st.markdown(f"### All {n_teams} Teams — Stage Probabilities")
         display = sim_df.copy()
         for col in ["Champion", "Final", "Semi", "Quarter", "R16", "R32"]:
             display[col] = (display[col] * 100).round(1)
@@ -608,6 +738,12 @@ with tab2:
 
 # ───────────────────────────────────────────────────────────────
 #  TAB 3 — TEAM INTEL
+#
+#  ELO rating: live from get_elo_ratings() (processes historical DB).
+#  Squad quality: reads FBref parquet cache via load_cached_squad().
+#  Psych signals: get_psych_signals() — tries parquet first, then
+#    queries SQLite wc2026.db WHERE reviewed = 1.
+#  Recent form: get_recent_form() — loads international results CSV/parquet.
 # ───────────────────────────────────────────────────────────────
 
 with tab3:
@@ -670,6 +806,7 @@ with tab3:
     with col_b:
         st.markdown("### Psych Risk Level")
 
+        # get_psych_signals() queries SQLite wc2026.db (reviewed=1) or parquet cache
         psych_df = get_psych_signals()
         psych_team = pd.DataFrame()
 

@@ -11,6 +11,7 @@ import time
 import requests
 import pandas as pd
 from datetime import datetime
+from functools import lru_cache
 from loguru import logger
 import sys
 sys.path.insert(0, str(__import__("pathlib").Path(__file__).parents[2]))
@@ -28,6 +29,7 @@ OPEN_DATASET_URL = (
 )
 
 
+@lru_cache(maxsize=1)
 def load_open_international_results() -> pd.DataFrame:
     """
     Load Mart Jürisoo's open international soccer results dataset.

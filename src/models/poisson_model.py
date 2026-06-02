@@ -128,6 +128,8 @@ def _dc_log_likelihood_vectorised(params, home_goals, away_goals,
     The first attack parameter is NOT optimised (held fixed to enforce the
     identifiability constraint attack_0 = 0).  The optimiser only sees
     params[1:], so we prepend a 0 before unpacking.
+
+    This implementation is fully vectorised with numpy for performance.
     """
     # params arrives without attack[0] (it is fixed at 0 by the caller)
     full = np.concatenate([[0.0], params])
@@ -137,29 +139,36 @@ def _dc_log_likelihood_vectorised(params, home_goals, away_goals,
     home_adv = full[2 * n_teams]
     rho      = full[2 * n_teams + 1]
 
-    total_ll = 0.0
-    for i in range(len(home_goals)):
-        h = int(home_goals[i])
-        a = int(away_goals[i])
-        hi = home_idx[i]
-        ai = away_idx[i]
-        w  = weights[i]
+    # Vectorised lambda/mu for all matches at once
+    lam = np.exp(attack[home_idx] + defence[away_idx] + home_adv)
+    mu  = np.exp(attack[away_idx] + defence[home_idx])
 
-        lam = np.exp(attack[hi] + defence[ai] + home_adv)
-        mu  = np.exp(attack[ai] + defence[hi])
+    # Vectorised Dixon-Coles tau correction
+    # tau = 1.0 for all matches by default; override low-score cases
+    tau = np.ones(len(home_goals))
+    h = home_goals
+    a = away_goals
 
-        tau = _dixon_coles_tau(h, a, lam, mu, rho)
+    mask_00 = (h == 0) & (a == 0)
+    mask_10 = (h == 1) & (a == 0)
+    mask_01 = (h == 0) & (a == 1)
+    mask_11 = (h == 1) & (a == 1)
 
-        # Guard against tau <= 0 (numerical edge case)
-        if tau <= 0:
-            tau = 1e-10
+    tau[mask_00] = 1.0 - lam[mask_00] * mu[mask_00] * rho
+    tau[mask_10] = 1.0 + mu[mask_10] * rho
+    tau[mask_01] = 1.0 + lam[mask_01] * rho
+    tau[mask_11] = 1.0 - rho
 
-        ll = (
-            np.log(tau)
-            + poisson.logpmf(h, lam)
-            + poisson.logpmf(a, mu)
-        )
-        total_ll += w * ll
+    # Guard against tau <= 0 (numerical edge case)
+    tau = np.maximum(tau, 1e-10)
+
+    # Vectorised log-likelihood using scipy.stats.poisson.logpmf
+    ll = (
+        np.log(tau)
+        + poisson.logpmf(h, lam)
+        + poisson.logpmf(a, mu)
+    )
+    total_ll = np.dot(weights, ll)
 
     # Return negative because scipy.minimize minimises
     return -total_ll

@@ -85,7 +85,7 @@ def _pct(val: float) -> str:
     return f"{val * 100:.1f}%"
 
 
-def _bar(val: float, width: int = 20, fill: str = "█", empty: str = "░") -> str:
+def _bar(val: float, width: int = 20, fill: str = "#", empty: str = "-") -> str:
     """Simple ASCII progress bar."""
     filled = round(val * width)
     return fill * filled + empty * (width - filled)

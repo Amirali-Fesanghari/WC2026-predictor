@@ -73,20 +73,20 @@ WC_2026_TEAMS = [
     "Switzerland", "Turkey",
 ]
 
-# ── WC 2026 group stage draw ─────────────────────────────────
+# ── WC 2026 group stage draw (official draw, December 5, 2025) ───────────────
 WC_2026_GROUPS = {
-    "A": ["United States", "Panama", "Algeria", "Uzbekistan"],
-    "B": ["Argentina", "Chile", "Morocco", "New Zealand"],
-    "C": ["Mexico", "Honduras", "Poland", "Tunisia"],
-    "D": ["France", "Uruguay", "Saudi Arabia", "South Africa"],
-    "E": ["Spain", "Costa Rica", "Japan", "DR Congo"],
-    "F": ["Brazil", "Canada", "Ecuador", "Ivory Coast"],
-    "G": ["Portugal", "Colombia", "Germany", "Senegal"],
-    "H": ["Netherlands", "Peru", "South Korea", "Egypt"],
-    "I": ["England", "Paraguay", "Iran", "Ghana"],
-    "J": ["Belgium", "Australia", "Croatia", "Bolivia"],
-    "K": ["Turkey", "Qatar", "Norway", "Cape Verde"],
-    "L": ["Switzerland", "Nigeria", "Iraq", "Curacao"],
+    "A": ["Mexico", "South Korea", "South Africa", "Czech Republic"],
+    "B": ["Canada", "Bosnia and Herzegovina", "Qatar", "Switzerland"],
+    "C": ["Brazil", "Morocco", "Haiti", "Scotland"],
+    "D": ["United States", "Paraguay", "Australia", "Turkey"],
+    "E": ["Germany", "Curacao", "Ivory Coast", "Ecuador"],
+    "F": ["Netherlands", "Japan", "Sweden", "Tunisia"],
+    "G": ["Belgium", "Egypt", "Iran", "New Zealand"],
+    "H": ["Spain", "Cape Verde", "Saudi Arabia", "Uruguay"],
+    "I": ["France", "Senegal", "Iraq", "Norway"],
+    "J": ["Argentina", "Algeria", "Austria", "Jordan"],
+    "K": ["Portugal", "DR Congo", "Uzbekistan", "Colombia"],
+    "L": ["England", "Croatia", "Ghana", "Panama"],
 }
 
 # Name aliases: how different data sources refer to the same team

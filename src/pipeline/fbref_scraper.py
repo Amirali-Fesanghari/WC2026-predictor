@@ -143,7 +143,7 @@ def scrape_national_squad_ratings(team_name: str) -> pd.DataFrame:
         logger.warning(f"No FBref squad ID for {canonical}. Returning empty.")
         return pd.DataFrame()
 
-    url = f"https://fbref.com/en/national/squads/{squad_id}/{canonical}-Stats"
+    url = f"https://fbref.com/en/squads/{squad_id}/{canonical}-Stats"
     html = _fetch_page(url, f"squad_{squad_id}")
     if not html:
         return pd.DataFrame()
@@ -357,12 +357,15 @@ def scrape_all_wc_teams(delay_between_teams: float = 5.0) -> dict[str, pd.DataFr
         df = scrape_national_squad_ratings(team)
         results[team] = df
 
-        # Save per-team cache to parquet
+        # Save per-team cache to parquet — use same key as load_cached_squad()
         if not df.empty:
-            cache_path = CACHE_DIR / f"squad_{team.replace(' ','_').replace('/','_')}.parquet"
+            canonical = normalize(team)
+            cache_path = CACHE_DIR / f"squad_{canonical.replace(' ','_').replace('/','_')}.parquet"
             df.to_parquet(cache_path)
 
-        time.sleep(delay_between_teams)
+        # Don't sleep after the last team
+        if i < total:
+            time.sleep(delay_between_teams)
 
     logger.success(f"Scraped {sum(len(v) for v in results.values())} players across {total} teams")
     return results
@@ -378,18 +381,49 @@ def load_cached_squad(team_name: str) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    # Test: scrape one team
-    print("Testing FBref scraper on France...")
-    df = scrape_national_squad_ratings("France")
+    import argparse
 
-    if df.empty:
-        print("No data returned (FBref may have changed structure or rate limited)")
-        print("This is normal on first run — check your internet connection")
+    parser = argparse.ArgumentParser(description="FBref national team scraper")
+    parser.add_argument(
+        "--test", action="store_true",
+        help="Quick test mode: scrape only the first 2 teams (France + Argentina) instead of all 48"
+    )
+    parser.add_argument(
+        "--all", action="store_true",
+        help="Scrape all 48 WC 2026 teams (~5 minutes)"
+    )
+    args = parser.parse_args()
+
+    if args.all:
+        print("Scraping all WC 2026 teams...")
+        results = scrape_all_wc_teams()
+        non_empty = sum(1 for v in results.values() if not v.empty)
+        print(f"\nDone. {non_empty}/{len(results)} teams had data.")
+    elif args.test:
+        test_teams = ["France", "Argentina"]
+        print(f"--test mode: scraping {test_teams}...")
+        for team_name in test_teams:
+            df = scrape_national_squad_ratings(team_name)
+            if df.empty:
+                print(f"  {team_name}: no data (FBref may have changed structure or rate limited)")
+            else:
+                print(f"\n  {team_name} — {len(df)} players scraped:")
+                print(df[["player_name","position","club","rating_proxy","goals","assists","xg"]].to_string(index=False))
+                quality = compute_squad_quality_score(df)
+                print(f"  Squad quality: {quality}")
     else:
-        print(f"\nFrance squad — {len(df)} players scraped:")
-        print(df[["player_name","position","club","rating_proxy","goals","assists","xg"]].to_string(index=False))
+        # Default: single team smoke test
+        print("Testing FBref scraper on France (use --test for 2 teams, --all for all 48)...")
+        df = scrape_national_squad_ratings("France")
 
-        print("\nSquad quality scores:")
-        quality = compute_squad_quality_score(df)
-        for k, v in quality.items():
-            print(f"  {k}: {v}")
+        if df.empty:
+            print("No data returned (FBref may have changed structure or rate limited)")
+            print("This is normal on first run — check your internet connection")
+        else:
+            print(f"\nFrance squad — {len(df)} players scraped:")
+            print(df[["player_name","position","club","rating_proxy","goals","assists","xg"]].to_string(index=False))
+
+            print("\nSquad quality scores:")
+            quality = compute_squad_quality_score(df)
+            for k, v in quality.items():
+                print(f"  {k}: {v}")

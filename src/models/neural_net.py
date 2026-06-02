@@ -349,7 +349,7 @@ class WCGoalModel:
 
     @classmethod
     def load(cls, path: Path) -> "WCGoalModel":
-        data = torch.load(path, map_location="cpu")
+        data = torch.load(path, map_location="cpu", weights_only=False)
         instance = cls(device="cpu")
         instance.feature_names = data["feature_names"]
         instance.feature_mean  = data["feature_mean"]

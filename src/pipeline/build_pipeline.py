@@ -28,6 +28,14 @@ CLI flags:
 """
 
 import sys
+import io
+
+# Ensure stdout/stderr use UTF-8 on Windows (avoids cp1256 / charmap errors)
+if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+if sys.stderr.encoding and sys.stderr.encoding.lower() not in ("utf-8", "utf8"):
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
+
 import argparse
 import json
 import re
@@ -217,7 +225,7 @@ def step4_fbref_scrape(skip: bool = False) -> int:
     n_loaded = 0
     try:
         from src.pipeline.fbref_scraper import (
-            scrape_team_squad,
+            scrape_all_wc_teams,
             load_cached_squad,
             compute_squad_quality_score,
         )
@@ -231,9 +239,11 @@ def step4_fbref_scrape(skip: bool = False) -> int:
             _ok(f"Cache: {n_loaded}/{len(WC_2026_TEAMS)} teams available")
         else:
             logger.info(f"Scraping FBref for {len(WC_2026_TEAMS)} teams (4s delay each)...")
-            for i, team in enumerate(WC_2026_TEAMS, 1):
+            scraped = scrape_all_wc_teams()
+            n_loaded = len(scraped)
+            for i, (team, df) in enumerate(scraped.items(), 1):
                 try:
-                    df = scrape_team_squad(team)
+                    df = df  # already scraped
                     if not df.empty:
                         n_loaded += 1
                         logger.debug(f"  [{i}/{len(WC_2026_TEAMS)}] {team}: {len(df)} players")
@@ -456,7 +466,7 @@ def step9_train_tactical(skip: bool = False):
         classifier = TacticalClassifier()
         # train() gracefully falls back to rule-based if StatsBomb data is absent
         classifier.train()
-        mode = "ML" if classifier._trained_ml else "rule-based"
+        mode = "ML" if getattr(classifier, "_trained_ml", False) else "rule-based"
         _ok(f"TacticalClassifier ready ({mode} mode)")
         _save_metrics({"tactical_mode": mode})
 
